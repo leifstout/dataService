@@ -2,20 +2,17 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-if RunService:IsClient() then
-	return nil
-end
-
 local Packages = script.Parent.Parent
 local Signal = require(Packages.Signal)
 local Networker = require(Packages.Networker)
-local ProfileService = require(Packages.ProfileService)
+local ProfileService = if RunService:IsServer() then require(Packages.ProfileService) else nil :: any
 local Data = require(script.Parent.Data)
 local DataServiceUtils = require(script.Parent.DataServiceUtils)
 
 local DATA_PREFIX = "PLAYER_"
 
 type Path = Data.Path
+type Signal<T> = Signal.Signal<T>
 
 type DataOptions = {
 	template: any,
@@ -41,6 +38,7 @@ local DataServiceServer = {
 }
 
 function DataServiceServer.init(self: DataServiceServer, options: DataOptions): ()
+	assert(RunService:IsServer(), "DataServiceServer can only be used on the server.")
 	self.options = options
 	self.profileStore = ProfileService.GetProfileStore(options.profileStoreIndex, options.template)
 	self.networker = Networker.server.new("DataService", self, {
@@ -161,7 +159,7 @@ function DataServiceServer.waitForData(self: DataServiceServer, player: Player):
 	return self._data[player]
 end
 
-function DataServiceServer.get(self: DataServiceServer, player: Player, path: Path?)
+function DataServiceServer.get(self: DataServiceServer, player: Player, path: Path?): any
 	return self._data[player]:get(path)
 end
 
@@ -179,7 +177,7 @@ function DataServiceServer.update(
 	path: Path,
 	callback: (any) -> any,
 	dontReplicate: boolean?
-)
+): any
 	local value = self._data[player]:update(path, callback)
 
 	if not dontReplicate then
@@ -210,7 +208,7 @@ function DataServiceServer.arrayRemove(
 	path: Path,
 	index: number,
 	dontReplicate: boolean?
-)
+): any
 	local value = self._data[player]:arrayRemove(path, index)
 
 	if not dontReplicate then
@@ -220,19 +218,19 @@ function DataServiceServer.arrayRemove(
 	return value
 end
 
-function DataServiceServer.getChangedSignal(self: DataServiceServer, player: Player, path: Path)
+function DataServiceServer.getChangedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getChangedSignal(path)
 end
 
-function DataServiceServer.getIndexChangedSignal(self: DataServiceServer, player: Player, path: Path)
+function DataServiceServer.getIndexChangedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getIndexChangedSignal(path)
 end
 
-function DataServiceServer.getArrayInsertedSignal(self: DataServiceServer, player: Player, path: Path)
+function DataServiceServer.getArrayInsertedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getArrayInsertedSignal(path)
 end
 
-function DataServiceServer.getArrayRemovedSignal(self: DataServiceServer, player: Player, path: Path)
+function DataServiceServer.getArrayRemovedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getArrayRemovedSignal(path)
 end
 

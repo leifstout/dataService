@@ -1,15 +1,12 @@
 local RunService = game:GetService("RunService")
 
-if RunService:IsServer() then
-	return nil
-end
-
 local Packages = script.Parent.Parent
 local Signal = require(Packages.Signal)
 local Networker = require(Packages.Networker)
 local DataServiceUtils = require(script.Parent.DataServiceUtils)
 local Data = require(script.Parent.Data)
 
+type Signal<T> = Signal.Signal<T>
 type Path = Data.Path
 
 local waitSignal = Signal.new()
@@ -17,7 +14,9 @@ local waitSignal = Signal.new()
 local DataServiceClient = {
 	_data = nil :: Data.Data<any>?,
 }
-DataServiceClient.networker = Networker.client.new("DataService", DataServiceClient)
+DataServiceClient.networker = if RunService:IsClient()
+	then Networker.client.new("DataService", DataServiceClient)
+	else nil
 
 function DataServiceClient.fetch(self: DataServiceClient, path: Path?, dontSet: boolean?): any
 	local value = self.networker:fetch("get", path)
@@ -36,7 +35,7 @@ function DataServiceClient.set(self: DataServiceClient, path: Path, value: any)
 	self._data:set(path, value)
 end
 
-function DataServiceClient.update(self: DataServiceClient, path: Path, callback: (any) -> any)
+function DataServiceClient.update(self: DataServiceClient, path: Path, callback: (any) -> any): any
 	return self._data:update(path, callback)
 end
 
@@ -44,23 +43,23 @@ function DataServiceClient.arrayInsert(self: DataServiceClient, path: Path, valu
 	self._data:arrayInsert(path, value, index)
 end
 
-function DataServiceClient.arrayRemove(self: DataServiceClient, path: Path, index: number)
+function DataServiceClient.arrayRemove(self: DataServiceClient, path: Path, index: number): any
 	return self._data:arrayRemove(path, index)
 end
 
-function DataServiceClient.getChangedSignal(self: DataServiceClient, path: Path)
+function DataServiceClient.getChangedSignal(self: DataServiceClient, path: Path): Signal<any>
 	return self._data:getChangedSignal(path)
 end
 
-function DataServiceClient.getIndexChangedSignal(self: DataServiceClient, path: Path)
+function DataServiceClient.getIndexChangedSignal(self: DataServiceClient, path: Path): Signal<any>
 	return self._data:getIndexChangedSignal(path)
 end
 
-function DataServiceClient.getArrayInsertedSignal(self: DataServiceClient, path: Path)
+function DataServiceClient.getArrayInsertedSignal(self: DataServiceClient, path: Path): Signal<any>
 	return self._data:getArrayInsertedSignal(path)
 end
 
-function DataServiceClient.getArrayRemovedSignal(self: DataServiceClient, path: Path)
+function DataServiceClient.getArrayRemovedSignal(self: DataServiceClient, path: Path): Signal<any>
 	return self._data:getArrayRemovedSignal(path)
 end
 
