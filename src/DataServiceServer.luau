@@ -2,6 +2,10 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+if RunService:IsClient() then
+	return {} :: DataServiceServer
+end
+
 local Packages = script.Parent.Parent
 local Signal = require(Packages.Signal)
 local Networker = require(Packages.Networker)

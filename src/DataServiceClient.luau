@@ -1,5 +1,9 @@
 local RunService = game:GetService("RunService")
 
+if RunService:IsServer() then
+	return {} :: DataServiceClient
+end
+
 local Packages = script.Parent.Parent
 local Signal = require(Packages.Signal)
 local Networker = require(Packages.Networker)
@@ -14,9 +18,7 @@ local waitSignal = Signal.new()
 local DataServiceClient = {
 	_data = nil :: Data.Data<any>?,
 }
-DataServiceClient.networker = if RunService:IsClient()
-	then Networker.client.new("DataService", DataServiceClient)
-	else nil
+DataServiceClient.networker = Networker.client.new("DataService", DataServiceClient)
 
 function DataServiceClient.fetch(self: DataServiceClient, path: Path?, dontSet: boolean?): any
 	local value = self.networker:fetch("get", path)
