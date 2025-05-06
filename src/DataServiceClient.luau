@@ -18,7 +18,16 @@ local waitSignal = Signal.new()
 local DataServiceClient = {
 	_data = nil :: Data.Data<any>?,
 }
-DataServiceClient.networker = Networker.client.new("DataService", DataServiceClient)
+
+function DataServiceClient.init(self: DataServiceClient, data: any?)
+	self.networker = Networker.client.new("DataService", self)
+
+	if data then
+		self:_initData(data)
+	end
+
+	self:waitForData()
+end
 
 function DataServiceClient.fetch(self: DataServiceClient, path: Path?, dontSet: boolean?): any
 	local value = self.networker:fetch("get", path)
@@ -75,17 +84,17 @@ function DataServiceClient.waitForData(self: DataServiceClient): any
 	return self._data
 end
 
-DataServiceClient[DataServiceUtils.enums.actions.set] = DataServiceClient.set
-DataServiceClient[DataServiceUtils.enums.actions.arrayInsert] = DataServiceClient.arrayInsert
-DataServiceClient[DataServiceUtils.enums.actions.arrayRemove] = DataServiceClient.arrayRemove
-DataServiceClient[DataServiceUtils.enums.actions.init] = function(self: DataServiceClient, data: any)
+function DataServiceClient._initData(self: DataServiceClient, data: any): ()
 	assert(self._data == nil, "DataServiceClient: Data already initialized")
 	self._data = Data.new(data)
 	waitSignal:Fire()
 end
 
-export type DataServiceClient = typeof(DataServiceClient)
+DataServiceClient[DataServiceUtils.enums.actions.set] = DataServiceClient.set
+DataServiceClient[DataServiceUtils.enums.actions.arrayInsert] = DataServiceClient.arrayInsert
+DataServiceClient[DataServiceUtils.enums.actions.arrayRemove] = DataServiceClient.arrayRemove
+DataServiceClient[DataServiceUtils.enums.actions.init] = DataServiceClient._initData
 
-DataServiceClient:waitForData()
+export type DataServiceClient = typeof(DataServiceClient)
 
 return DataServiceClient
