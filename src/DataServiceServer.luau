@@ -18,12 +18,66 @@ local DATA_PREFIX = "PLAYER_"
 type Path = Data.Path
 type Signal<T> = Signal.Signal<T>
 
+--[=[
+	@type DataTemplate { [string]: any }
+	@within DataServiceServer
+	
+	Defines the structure of player data used by the DataServiceServer.
+
+	```lua
+	local datatemplate = {
+		currency = 0,
+		level = 1,
+		xp = 0,
+		inventory = {},
+		tutorial = {
+			completed = false,
+			step = 0,
+		},
+		stats = {
+			enemiesDefeated = 0,
+			timePlayed = 0,
+			questsCompleted = 0,
+		}
+	}
+	```
+
+	
+	:::note
+	Player data automatically reconciles the template on join if new keys are added.
+	:::
+	:::warning
+	Follow JSON rules for all data. (e.g., no Vector3, CFrame, etc.)
+	:::
+]=]
+type DataTemplate = { [string]: any }
+
+--[=[
+	@interface DataOptions
+	@within DataServiceServer
+	.template DataTemplate -- Template dictionary for player data.
+	.profileStoreIndex string -- Index for the ProfileStore.
+	.useMock boolean? -- Use Mock data for testing.
+	.viewedUserId number? -- User ID to view data for. Use to view a specific player's data without saving.
+	.overridenUserId number? -- User ID to override for the profile. Use to play on another player's save.
+	.dontSave boolean? -- Prevent saving the profile. Use for testing without saving.
+	.resetData boolean? -- Reset the data on player join. Use to wipe data for testing.
+	
+	```lua
+	local options = {
+		template = require(path.to.datatemplate),
+		profileStoreIndex = "Public",
+	}
+	```
+
+	Provides options for initializing the DataServiceServer.
+]=]
 type DataOptions = {
 	template: any,
 	profileStoreIndex: string,
 	useMock: boolean?,
 	viewedUserId: number?,
-	overriddenUserId: number?,
+	overridenUserId: number?,
 	dontSave: boolean?,
 	resetData: boolean?,
 }
@@ -34,6 +88,10 @@ type Profile = {
 	[any]: any,
 }
 
+--[=[
+	@class DataServiceServer
+	The server-side service for managing player data.
+]=]
 local DataServiceServer = {
 	_profiles = {} :: { [Player]: Profile },
 	_data = {} :: { [Player]: Data.Data<any> },
@@ -41,8 +99,26 @@ local DataServiceServer = {
 	options = {} :: DataOptions,
 }
 
+--[=[
+	@method init
+	@within DataServiceServer
+	@param options DataOptions
+	Initializes DataServiceServer with the provided options.
+	```lua
+	local dataTemplate = require(path.to.datatemplate)
+	DataServiceServer:init({
+		template = dataTemplate,
+		profileStoreIndex = "Testing",
+		useMock = true,
+	})
+	```
+	:::warning
+	`:init(...)` must be called before using any other methods. Attempting to `init` more than once will throw an error.
+	:::
+]=]
 function DataServiceServer.init(self: DataServiceServer, options: DataOptions): ()
 	assert(RunService:IsServer(), "DataServiceServer can only be used on the server.")
+	assert(not self.options, "DataServiceServer has already been initialized.")
 	self.options = options
 	self.profileStore = ProfileService.GetProfileStore(options.profileStoreIndex, options.template)
 	self.networker = Networker.server.new("DataService", self, {
@@ -65,7 +141,7 @@ function DataServiceServer.init(self: DataServiceServer, options: DataOptions): 
 end
 
 function DataServiceServer._playerAdded(self: DataServiceServer, player: Player): ()
-	local userId = self.options.overriddenUserId or self.options.viewedUserId or player.UserId
+	local userId = self.options.overridenUserId or self.options.viewedUserId or player.UserId
 	local index = DATA_PREFIX .. userId
 
 	if self.options.resetData and not self.options.viewedUserId then
