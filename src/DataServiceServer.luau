@@ -9,7 +9,7 @@ end
 local Packages = script.Parent.Parent
 local Signal = require(Packages.Signal)
 local Networker = require(Packages.Networker)
-local ProfileService = if RunService:IsServer() then require(Packages.ProfileService) else nil :: any
+local ProfileStore = if RunService:IsServer() then require(Packages.ProfileStore) else nil :: any
 local Data = require(script.Parent.Data)
 local DataServiceUtils = require(script.Parent.DataServiceUtils)
 
@@ -82,11 +82,7 @@ type DataOptions = {
 	resetData: boolean?,
 }
 
-type Profile = {
-	Data: any,
-	Release: (Profile) -> (),
-	[any]: any,
-}
+type Profile = ProfileStore.Profile<any>
 
 --[=[
 	@class DataServiceServer
@@ -120,7 +116,7 @@ function DataServiceServer.init(self: DataServiceServer, options: DataOptions): 
 	assert(RunService:IsServer(), "DataServiceServer can only be used on the server.")
 	assert(not self.options, "DataServiceServer has already been initialized.")
 	self.options = options
-	self.profileStore = ProfileService.GetProfileStore(options.profileStoreIndex, options.template)
+	self.playerStore = ProfileStore.New(options.profileStoreIndex, options.template)
 	self.networker = Networker.server.new("DataService", self, {
 		self.get,
 	})
@@ -140,33 +136,41 @@ function DataServiceServer.init(self: DataServiceServer, options: DataOptions): 
 	end)
 end
 
+local function storeCancel(player: Player)
+	return {
+		Cancel = function()
+			return player.Parent ~= Players
+		end,
+	}
+end
+
 function DataServiceServer._playerAdded(self: DataServiceServer, player: Player): ()
 	local userId = self.options.overridenUserId or self.options.viewedUserId or player.UserId
 	local index = DATA_PREFIX .. userId
 
 	if self.options.resetData and not self.options.viewedUserId then
-		self.profileStore:WipeProfileAsync(index)
+		self.playerStore:WipeProfileAsync(index)
 	end
 
 	local profile: Profile = if self.options.useMock
-		then self.profileStore.Mock:LoadProfileAsync(index)
-		elseif self.options.viewedUserId or self.options.dontSave then self.profileStore:ViewProfileAsync(index)
-		else self.profileStore:LoadProfileAsync(index)
+		then self.playerStore.Mock:StartSessionAsync(index, storeCancel(player))
+		elseif self.options.viewedUserId or self.options.dontSave then self.playerStore:GetAsync(index)
+		else self.playerStore:StartSessionAsync(index, storeCancel(player))
 
 	if not profile then
-		player:Kick()
+		player:Kick(`Profile load fail - Please rejoin`)
 		return
 	end
 
 	profile:AddUserId(userId)
 	profile:Reconcile()
-	profile:ListenToRelease(function()
+	profile.OnSessionEnd:Connect(function()
 		self._profiles[player] = nil
-		player:Kick()
+		player:Kick(`Profile session end - Please rejoin`)
 	end)
 
 	if not player:IsDescendantOf(Players) then
-		profile:Release()
+		player:Kick(`Profile load fail - Please rejoin`)
 		return
 	end
 
@@ -186,7 +190,7 @@ function DataServiceServer._playerRemoving(self: DataServiceServer, player: Play
 		warn(err or "Error onPlayerRemoving for " .. player.Name)
 	end
 
-	profile:Release()
+	profile:EndSession()
 	self._profiles[player] = nil
 
 	local waitSignal = self._waitSignals[player]
@@ -532,6 +536,9 @@ function DataServiceServer.getArrayRemovedSignal(self: DataServiceServer, player
 	return self._data[player]:getArrayRemovedSignal(path)
 end
 
-export type DataServiceServer = typeof(DataServiceServer)
+export type DataServiceServer = typeof(DataServiceServer) & {
+	playerStore: ProfileStore.ProfileStore<any>,
+	networker: Networker.Server,
+}
 
 return DataServiceServer

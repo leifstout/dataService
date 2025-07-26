@@ -16,4 +16,4 @@ Janitor = "howmanysmall/janitor@1.17.0"
 Networker = "leifstout/networker@0.2.1"
 
 [server-dependencies]
-ProfileService = "firebird702/profileservice@1.1.0"
+ProfileStore = "lm-loleris/profilestore@1.0.3"

@@ -8,11 +8,6 @@ version = "4.0.0"
 dependencies = []
 
 [[package]]
-name = "firebird702/profileservice"
-version = "1.1.0"
-dependencies = []
-
-[[package]]
 name = "howmanysmall/janitor"
 version = "1.18.3"
 dependencies = [["Promise", "howmanysmall/typed-promise@4.0.6"]]
@@ -24,13 +19,18 @@ dependencies = [["Promise", "evaera/promise@4.0.0"]]
 
 [[package]]
 name = "leifstout/dataservice"
-version = "0.1.0"
-dependencies = [["Janitor", "howmanysmall/janitor@1.18.3"], ["Networker", "leifstout/networker@0.2.0"], ["Signal", "sleitnick/signal@2.0.3"], ["ProfileService", "firebird702/profileservice@1.1.0"]]
+version = "0.2.1"
+dependencies = [["Janitor", "howmanysmall/janitor@1.18.3"], ["Networker", "leifstout/networker@0.2.1"], ["Signal", "sleitnick/signal@2.0.3"], ["ProfileStore", "lm-loleris/profilestore@1.0.3"]]
 
 [[package]]
 name = "leifstout/networker"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [["Signal", "sleitnick/signal@2.0.3"]]
+
+[[package]]
+name = "lm-loleris/profilestore"
+version = "1.0.3"
+dependencies = []
 
 [[package]]
 name = "sleitnick/signal"
