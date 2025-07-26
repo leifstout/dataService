@@ -181,7 +181,11 @@ function DataServiceServer._playerRemoving(self: DataServiceServer, player: Play
 		return
 	end
 
-	self:onPlayerRemoving(player, profile.Data)
+	local success, err: any? = pcall(self.onPlayerRemoving, self, player, profile.Data)
+	if not success then
+		warn(err or "Error onPlayerRemoving for " .. player.Name)
+	end
+
 	profile:Release()
 	self._profiles[player] = nil
 
@@ -198,7 +202,45 @@ function DataServiceServer._playerRemoving(self: DataServiceServer, player: Play
 	end
 end
 
+--[=[
+	@method onPlayerInit
+	@within DataServiceServer
+	@tag Override
+	@param player Player
+	@param data DataTemplate
+
+	Overridable method called when a player initializes their data.
+	You can use this method to set initial values or perform actions when a player joins.
+
+	```lua
+	function DataServiceServer:onPlayerInit(player: Player, data: DataTemplate): ()
+		print(player.Name .. " has initialized with data:", data)
+		data.sessionJoinTime = os.time() -- We can directly modify data since no connections exist yet.
+	end
+	```
+
+	:::note
+	`onPlayerInit` is called after a player's data has loaded but before it is sent to the client or is available to the server.
+	:::
+]=]
 function DataServiceServer.onPlayerInit(_self: DataServiceServer, _player: Player, _data: any): () end
+
+--[=[
+	@method onPlayerRemoving
+	@within DataServiceServer
+	@tag Override
+	@param player Player
+	@param data DataTemplate
+
+	Overridable method called when a player is about to leave the game.
+	You can use this method to perform cleanup or save data before the player leaves.
+
+	```lua
+	function DataServiceServer:onPlayerRemoving(player: Player, data: DataTemplate): ()
+		data.totalPlayTime += os.time() - data.sessionJoinTime
+	end
+	```
+]=]
 function DataServiceServer.onPlayerRemoving(_self: DataServiceServer, _player: Player, _data: any): () end
 
 function DataServiceServer._initPlayer(self: DataServiceServer, player: Player, data: any): ()
@@ -214,15 +256,42 @@ function DataServiceServer._initPlayer(self: DataServiceServer, player: Player, 
 	end
 end
 
+--[=[
+	@method hasProfile
+	@within DataServiceServer
+	@param player Player
+	@return boolean
+
+	Checks if a profile exists for the given player.
+]=]
 function DataServiceServer.hasProfile(self: DataServiceServer, player: Player): boolean
 	return self._profiles[player] ~= nil
 end
 
+--[=[
+	@method getProfile
+	@within DataServiceServer
+	@param player Player
+	@return Profile
+
+	Retrieves the profile for the given player.
+	Throws an error if the profile does not exist.
+]=]
 function DataServiceServer.getProfile(self: DataServiceServer, player: Player): Profile
 	assert(self._profiles[player], "Profile does not exist for " .. player.Name)
 	return self._profiles[player]
 end
 
+--[=[
+	@method waitForData
+	@within DataServiceServer
+	@yields
+	@param player Player
+	@return Data
+
+	Waits for the player's data to be initialized and returns it.
+	If the data is already available, it returns immediately.
+]=]
 function DataServiceServer.waitForData(self: DataServiceServer, player: Player): Data.Data<any>
 	local data = self._data[player]
 	if data then
@@ -239,10 +308,41 @@ function DataServiceServer.waitForData(self: DataServiceServer, player: Player):
 	return self._data[player]
 end
 
+--[=[
+	@method get
+	@within DataServiceServer
+	@param player Player
+	@param path Path?
+	@return any
+
+	Retrieves the value at the specified path for the given player.
+	If no path is provided, it returns the entire data object.
+
+	```lua
+	local currency = DataServiceServer:get(player, { "currency" })
+	local tutorialStep = DataServiceServer:get(player, { "tutorial", "step" })
+	```
+]=]
 function DataServiceServer.get(self: DataServiceServer, player: Player, path: Path?): any
 	return self._data[player]:get(path)
 end
 
+--[=[
+	@method set
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@param value any
+	@param dontReplicate boolean? -- Optional, defaults to false
+
+	Sets the value at the specified path for the given player.
+	If `dontReplicate` is true, it does not replicate the change to the client.
+
+	```lua
+	DataServiceServer:set(player, { "currency" }, 100)
+	DataServiceServer:set(player, { "tutorial", "step" }, 2)
+	```
+]=]
 function DataServiceServer.set(self: DataServiceServer, player: Player, path: Path, value: any, dontReplicate: boolean?)
 	if not dontReplicate then
 		self.networker:fire(player, DataServiceUtils.enums.actions.set, path, value)
@@ -251,6 +351,24 @@ function DataServiceServer.set(self: DataServiceServer, player: Player, path: Pa
 	self._data[player]:set(path, value)
 end
 
+--[=[
+	@method update
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@param callback (any) -> any
+	@param dontReplicate boolean? -- Optional, defaults to false
+	@return any
+
+	Updates the value at the specified path for the given player using a callback function.
+	If `dontReplicate` is true, it does not replicate the change to the client.
+
+	```lua
+	local updatedCurrency = DataServiceServer:update(player, { "currency" }, function(currentValue)
+		return currentValue + 50
+	end)
+	```
+]=]
 function DataServiceServer.update(
 	self: DataServiceServer,
 	player: Player,
@@ -267,6 +385,27 @@ function DataServiceServer.update(
 	return value
 end
 
+--[=[
+	@method arrayInsert
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@param value any
+	@param index number? -- Optional, defaults to nil (appends to the end)
+	@param dontReplicate boolean? -- Optional, defaults to false
+
+	Inserts a value into an array at the specified path for the given player.
+	If `dontReplicate` is true, it does not replicate the change to the client.
+
+	```lua
+	DataServiceServer:arrayInsert(player, { "inventory" }, newItem)
+	DataServiceServer:arrayInsert(player, { "inventory" }, newItem, 1) -- Inserts at index 1
+	```
+
+	:::note
+	This mimics the behavior of `table.insert`
+	:::
+]=]
 function DataServiceServer.arrayInsert(
 	self: DataServiceServer,
 	player: Player,
@@ -282,6 +421,25 @@ function DataServiceServer.arrayInsert(
 	self._data[player]:arrayInsert(path, value, index)
 end
 
+--[=[
+	@method arrayRemove
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@param index number
+	@param dontReplicate boolean? -- Optional, defaults to false
+
+	Removes a value from an array at the specified path for the given player.
+	If `dontReplicate` is true, it does not replicate the change to the client.
+
+	```lua
+	DataServiceServer:arrayRemove(player, { "inventory" }, 1) -- Removes the item at index 1
+	```
+
+	:::note
+	This mimics the behavior of `table.remove`
+	:::
+]=]
 function DataServiceServer.arrayRemove(
 	self: DataServiceServer,
 	player: Player,
@@ -298,18 +456,78 @@ function DataServiceServer.arrayRemove(
 	return value
 end
 
+--[=[
+	@method getChangedSignal
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@return Signal<any>
+
+	Retrieves a signal that fires when the value at the specified path changes.
+
+	```lua
+	DataServiceServer:getChangedSignal(player, { "currency" }):Connect(function(newValue)
+		print("Currency changed to:", newValue)
+	end)
+	```
+]=]
 function DataServiceServer.getChangedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getChangedSignal(path)
 end
 
+--[=[
+	@method getIndexChangedSignal
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@return Signal<any>
+
+	Retrieves a signal that fires when any child at the specified path changes.
+
+	```lua
+	DataServiceServer:getIndexChangedSignal(player, { "tutorial" }):Connect(function(index, newValue)
+		print("Tutorial changed at index", index, "changed to:", newValue)
+	end)
+	```
+]=]
 function DataServiceServer.getIndexChangedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getIndexChangedSignal(path)
 end
 
+--[=[
+	@method getArrayInsertedSignal
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@return Signal<any>
+
+	Retrieves a signal that fires when an item is inserted into an array at the specified path.
+
+	```lua
+	DataServiceServer:getArrayInsertedSignal(player, { "inventory" }):Connect(function(index, value)
+		print("Item inserted at index", index, "with value:", value)
+	end)
+	```
+]=]
 function DataServiceServer.getArrayInsertedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getArrayInsertedSignal(path)
 end
 
+--[=[
+	@method getArrayRemovedSignal
+	@within DataServiceServer
+	@param player Player
+	@param path Path
+	@return Signal<any>
+
+	Retrieves a signal that fires when an item is removed from an array at the specified path.
+
+	```lua
+	DataServiceServer:getArrayRemovedSignal(player, { "inventory" }):Connect(function(index, value)
+		print("Item removed from index", index, "with value:", value)
+	end)
+	```
+]=]
 function DataServiceServer.getArrayRemovedSignal(self: DataServiceServer, player: Player, path: Path): Signal<any>
 	return self._data[player]:getArrayRemovedSignal(path)
 end
