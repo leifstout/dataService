@@ -18,6 +18,11 @@ local DATA_PREFIX = "PLAYER_"
 type Path = Data.Path
 type Signal<T> = Signal.Signal<T>
 
+type MessageData = {
+	key: string,
+	data: { any },
+}
+
 --[=[
 	@type DataTemplate { [string]: any }
 	@within DataServiceServer
@@ -92,6 +97,8 @@ local DataServiceServer = {
 	_profiles = {} :: { [Player]: Profile },
 	_data = {} :: { [Player]: Data.Data<any> },
 	_waitSignals = {} :: { [Player]: Signal.Signal<any> },
+	_globalCallbacks = {} :: { [string]: (player: Player, { any }) -> boolean? },
+	_globalCallbackAdded = Signal.new() :: Signal.Signal<string>,
 	options = {} :: DataOptions,
 }
 
@@ -114,7 +121,7 @@ local DataServiceServer = {
 ]=]
 function DataServiceServer.init(self: DataServiceServer, options: DataOptions): ()
 	assert(RunService:IsServer(), "DataServiceServer can only be used on the server.")
-	assert(not self.options, "DataServiceServer has already been initialized.")
+	assert(not self.playerStore, "DataServiceServer has already been initialized.")
 	self.options = options
 	self.playerStore = ProfileStore.New(options.profileStoreIndex, options.template)
 	self.networker = Networker.server.new("DataService", self, {
@@ -149,7 +156,7 @@ function DataServiceServer._playerAdded(self: DataServiceServer, player: Player)
 	local index = DATA_PREFIX .. userId
 
 	if self.options.resetData and not self.options.viewedUserId then
-		self.playerStore:WipeProfileAsync(index)
+		self.playerStore:RemoveAsync(index)
 	end
 
 	local profile: Profile = if self.options.useMock
@@ -176,6 +183,32 @@ function DataServiceServer._playerAdded(self: DataServiceServer, player: Player)
 
 	self._profiles[player] = profile
 	self:_initPlayer(player, profile.Data)
+
+	if not player:IsDescendantOf(Players) then
+		player:Kick(`Profile load fail - Please rejoin`)
+		return
+	end
+
+	profile:MessageHandler(function(messageData: MessageData, processed: () -> ())
+		local cb = self._globalCallbacks[messageData.key]
+		if cb then
+			if cb(player, messageData.data) ~= false then
+				processed()
+			end
+			return
+		end
+
+		local waitConnection
+		waitConnection = self._globalCallbackAdded:Connect(function(key: string)
+			if key ~= messageData.key then
+				return
+			end
+			if self._globalCallbacks[messageData.key](player, messageData.data) ~= false then
+				processed()
+			end
+			waitConnection:Disconnect()
+		end)
+	end)
 end
 
 function DataServiceServer._playerRemoving(self: DataServiceServer, player: Player): ()
@@ -284,6 +317,69 @@ end
 function DataServiceServer.getProfile(self: DataServiceServer, player: Player): Profile
 	assert(self._profiles[player], "Profile does not exist for " .. player.Name)
 	return self._profiles[player]
+end
+
+--[=[
+	@method addGlobalCallback
+	@within DataServiceServer
+	@param key string
+	@param cb (player: Player, { any }) -> boolean?
+
+	Adds a global callback for a specific key. This callback is invoked when a global message is sent with that key.
+
+	```lua
+	DataServiceServer:addGlobalCallback("CurrencyGift", function(player: Player, data: { amount: number }): boolean?
+		DataServiceServer:update(player, { "currency" }, function(currentValue)
+			return currentValue + data.amount
+		end)
+	end)
+	```
+
+	:::note
+	If the callback returns `false`, the message will not count as processed and will be retried later.
+	:::
+]=]
+function DataServiceServer.addGlobalCallback(
+	self: DataServiceServer,
+	key: string,
+	cb: (player: Player, { any }) -> boolean?
+): ()
+	assert(self._globalCallbacks[key] == nil, "Global callback already exists for key: " .. key)
+	self._globalCallbacks[key] = cb
+	self._globalCallbackAdded:Fire(key)
+end
+
+--[=[
+	@method sendGlobalMessage
+	@within DataServiceServer
+	@param key string
+	@param userId number | string
+	@param data { any }
+	@return boolean
+
+	Sends a global "message" to the specific user. `key` is used to identify the message type specified by `addGlobalCallback`.
+	Returns true if the message was sent successfully, false otherwise.
+
+	```lua
+	DataServiceServer:sendGlobalMessage("CurrencyGift", player.UserId, { amount = 100 })
+	```	
+
+	:::note
+	Global messages can be used cross server and are invoked for offline players upon joining.
+	:::
+]=]
+function DataServiceServer.sendGlobalMessage(
+	self: DataServiceServer,
+	key: string,
+	userId: number | string,
+	data: { any }
+): boolean
+	local profileKey = DATA_PREFIX .. tostring(userId)
+	local messageData: MessageData = {
+		key = key,
+		data = data,
+	}
+	return self.playerStore:MessageAsync(profileKey, messageData)
 end
 
 --[=[
