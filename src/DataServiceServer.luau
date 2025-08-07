@@ -99,6 +99,7 @@ local DataServiceServer = {
 	_waitSignals = {} :: { [Player]: Signal.Signal<any> },
 	_globalCallbacks = {} :: { [string]: (player: Player, { any }) -> boolean? },
 	_globalCallbackAdded = Signal.new() :: Signal.Signal<string>,
+	_removalFunctions = {} :: { (player: Player, data: any) -> () },
 	options = {} :: DataOptions,
 }
 
@@ -211,6 +212,30 @@ function DataServiceServer._playerAdded(self: DataServiceServer, player: Player)
 	end)
 end
 
+function DataServiceServer.sendGlobalMessage(
+	self: DataServiceServer,
+	key: string,
+	userId: number | string,
+	data: { any }
+): boolean
+	local profileKey = DATA_PREFIX .. tostring(userId)
+	local messageData: MessageData = {
+		key = key,
+		data = data,
+	}
+	return self.playerStore:MessageAsync(profileKey, messageData)
+end
+
+function DataServiceServer.addGlobalCallback(
+	self: DataServiceServer,
+	key: string,
+	cb: (player: Player, { any }) -> boolean?
+): ()
+	assert(self._globalCallbacks[key] == nil, "Global callback already exists for key: " .. key)
+	self._globalCallbacks[key] = cb
+	self._globalCallbackAdded:Fire(key)
+end
+
 function DataServiceServer._playerRemoving(self: DataServiceServer, player: Player): ()
 	local profile = self._profiles[player]
 
@@ -218,9 +243,11 @@ function DataServiceServer._playerRemoving(self: DataServiceServer, player: Play
 		return
 	end
 
-	local success, err: any? = pcall(self.onPlayerRemoving, self, player, profile.Data)
-	if not success then
-		warn(err or "Error onPlayerRemoving for " .. player.Name)
+	for _, fn in self._removalFunctions do
+		local success, err: any? = pcall(fn, player, profile.Data)
+		if not success then
+			warn(err or "Error in removal function for " .. player.Name)
+		end
 	end
 
 	profile:EndSession()
@@ -263,22 +290,41 @@ end
 function DataServiceServer.onPlayerInit(_self: DataServiceServer, _player: Player, _data: any): () end
 
 --[=[
-	@method onPlayerRemoving
+	@method addPlayerRemovingCallback
 	@within DataServiceServer
-	@tag Override
-	@param player Player
-	@param data DataTemplate
+	@param fn (player: Player, data: any) -> ()
 
-	Overridable method called when a player is about to leave the game.
-	You can use this method to perform cleanup or save data before the player leaves.
+	Add any number of functions to be called when a player is removed.
+	Used to perform cleanup or save data before the player leaves.
 
 	```lua
-	function DataServiceServer:onPlayerRemoving(player: Player, data: DataTemplate): ()
-		data.totalPlayTime += os.time() - data.sessionJoinTime
-	end
+	DataServiceServer:addPlayerRemovingCallback(function(player: Player, data: any): ()
+		print(player.Name .. " is leaving with data:", data)
+		-- Perform any cleanup or save operations here
+	end)
+	```
+
+	```lua
+	local disconnect = DataServiceServer:addPlayerRemovingCallback(function(player: Player, data: any): ()
+		data.currency = 0
+	end)
+
+	-- Later, you can disconnect this function if needed
+	disconnect()
 	```
 ]=]
-function DataServiceServer.onPlayerRemoving(_self: DataServiceServer, _player: Player, _data: any): () end
+function DataServiceServer.addPlayerRemovingCallback(
+	self: DataServiceServer,
+	fn: (player: Player, data: any) -> ()
+): () -> ()
+	table.insert(self._removalFunctions, fn)
+	return function()
+		local index = table.find(self._removalFunctions, fn)
+		if index then
+			table.remove(self._removalFunctions, index)
+		end
+	end
+end
 
 function DataServiceServer._initPlayer(self: DataServiceServer, player: Player, data: any): ()
 	self._data[player] = Data.new(data)
@@ -317,69 +363,6 @@ end
 function DataServiceServer.getProfile(self: DataServiceServer, player: Player): Profile
 	assert(self._profiles[player], "Profile does not exist for " .. player.Name)
 	return self._profiles[player]
-end
-
---[=[
-	@method addGlobalCallback
-	@within DataServiceServer
-	@param key string
-	@param cb (player: Player, { any }) -> boolean?
-
-	Adds a global callback for a specific key. This callback is invoked when a global message is sent with that key.
-
-	```lua
-	DataServiceServer:addGlobalCallback("CurrencyGift", function(player: Player, data: { amount: number }): boolean?
-		DataServiceServer:update(player, { "currency" }, function(currentValue)
-			return currentValue + data.amount
-		end)
-	end)
-	```
-
-	:::note
-	If the callback returns `false`, the message will not count as processed and will be retried later.
-	:::
-]=]
-function DataServiceServer.addGlobalCallback(
-	self: DataServiceServer,
-	key: string,
-	cb: (player: Player, { any }) -> boolean?
-): ()
-	assert(self._globalCallbacks[key] == nil, "Global callback already exists for key: " .. key)
-	self._globalCallbacks[key] = cb
-	self._globalCallbackAdded:Fire(key)
-end
-
---[=[
-	@method sendGlobalMessage
-	@within DataServiceServer
-	@param key string
-	@param userId number | string
-	@param data { any }
-	@return boolean
-
-	Sends a global "message" to the specific user. `key` is used to identify the message type specified by `addGlobalCallback`.
-	Returns true if the message was sent successfully, false otherwise.
-
-	```lua
-	DataServiceServer:sendGlobalMessage("CurrencyGift", player.UserId, { amount = 100 })
-	```	
-
-	:::note
-	Global messages can be used cross server and are invoked for offline players upon joining.
-	:::
-]=]
-function DataServiceServer.sendGlobalMessage(
-	self: DataServiceServer,
-	key: string,
-	userId: number | string,
-	data: { any }
-): boolean
-	local profileKey = DATA_PREFIX .. tostring(userId)
-	local messageData: MessageData = {
-		key = key,
-		data = data,
-	}
-	return self.playerStore:MessageAsync(profileKey, messageData)
 end
 
 --[=[
