@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkdocs=self.webpackChunkdocs||[]).push([[404],{4410:e=>{e.exports=JSON.parse('{"sourceUrl":"https://github.com/leifstout/dataService/blob/master","baseUrl":"/dataService/","classOrder":["DataServiceServer","DataServiceClient"],"apiCategories":[]}')}}]);
