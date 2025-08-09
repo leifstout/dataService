@@ -109,8 +109,10 @@ local DataServiceServer = {
 	@param options DataOptions
 	Initializes DataServiceServer with the provided options.
 	```lua
+	local DataService = require(path.to.DataService).server
 	local dataTemplate = require(path.to.datatemplate)
-	DataServiceServer:init({
+
+	DataService:init({
 		template = dataTemplate,
 		profileStoreIndex = "Testing",
 		useMock = true,
@@ -277,7 +279,8 @@ end
 	You can use this method to set initial values or perform actions when a player joins.
 
 	```lua
-	function DataServiceServer:onPlayerInit(player: Player, data: DataTemplate): ()
+	local DataService = require(path.to.DataService).server
+	function DataService:onPlayerInit(player: Player, data: DataTemplate): ()
 		print(player.Name .. " has initialized with data:", data)
 		data.sessionJoinTime = os.time() -- We can directly modify data since no connections exist yet.
 	end
@@ -298,14 +301,14 @@ function DataServiceServer.onPlayerInit(_self: DataServiceServer, _player: Playe
 	Used to perform cleanup or save data before the player leaves.
 
 	```lua
-	DataServiceServer:addPlayerRemovingCallback(function(player: Player, data: any): ()
+	DataService:addPlayerRemovingCallback(function(player: Player, data: any): ()
 		print(player.Name .. " is leaving with data:", data)
 		-- Perform any cleanup or save operations here
 	end)
 	```
 
 	```lua
-	local disconnect = DataServiceServer:addPlayerRemovingCallback(function(player: Player, data: any): ()
+	local disconnect = DataService:addPlayerRemovingCallback(function(player: Player, data: any): ()
 		data.currency = 0
 	end)
 
@@ -402,8 +405,9 @@ end
 	If no path is provided, it returns the entire data object.
 
 	```lua
-	local currency = DataServiceServer:get(player, { "currency" })
-	local tutorialStep = DataServiceServer:get(player, { "tutorial", "step" })
+	local DataService = require(path.to.DataService).server
+	local currency = DataService:get(player, { "currency" })
+	local tutorialStep = DataService:get(player, { "tutorial", "step" })
 	```
 ]=]
 function DataServiceServer.get(self: DataServiceServer, player: Player, path: Path?): any
@@ -422,8 +426,9 @@ end
 	If `dontReplicate` is true, it does not replicate the change to the client.
 
 	```lua
-	DataServiceServer:set(player, { "currency" }, 100)
-	DataServiceServer:set(player, { "tutorial", "step" }, 2)
+	local DataService = require(path.to.DataService).server
+	DataService:set(player, { "currency" }, 100)
+	DataService:set(player, { "tutorial", "step" }, 2)
 	```
 ]=]
 function DataServiceServer.set(self: DataServiceServer, player: Player, path: Path, value: any, dontReplicate: boolean?)
@@ -447,7 +452,7 @@ end
 	If `dontReplicate` is true, it does not replicate the change to the client.
 
 	```lua
-	local updatedCurrency = DataServiceServer:update(player, { "currency" }, function(currentValue)
+	local updatedCurrency = DataService:update(player, { "currency" }, function(currentValue)
 		return currentValue + 50
 	end)
 	```
@@ -481,8 +486,8 @@ end
 	If `dontReplicate` is true, it does not replicate the change to the client.
 
 	```lua
-	DataServiceServer:arrayInsert(player, { "inventory" }, newItem)
-	DataServiceServer:arrayInsert(player, { "inventory" }, newItem, 1) -- Inserts at index 1
+	DataService:arrayInsert(player, { "inventory" }, newItem)
+	DataService:arrayInsert(player, { "inventory" }, newItem, 1) -- Inserts at index 1
 	```
 
 	:::note
@@ -516,7 +521,7 @@ end
 	If `dontReplicate` is true, it does not replicate the change to the client.
 
 	```lua
-	DataServiceServer:arrayRemove(player, { "inventory" }, 1) -- Removes the item at index 1
+	DataService:arrayRemove(player, { "inventory" }, 1) -- Removes the item at index 1
 	```
 
 	:::note
@@ -549,7 +554,7 @@ end
 	Retrieves a signal that fires when the value at the specified path changes.
 
 	```lua
-	DataServiceServer:getChangedSignal(player, { "currency" }):Connect(function(newValue)
+	DataService:getChangedSignal(player, { "currency" }):Connect(function(newValue)
 		print("Currency changed to:", newValue)
 	end)
 	```
@@ -568,7 +573,7 @@ end
 	Retrieves a signal that fires when any child at the specified path changes.
 
 	```lua
-	DataServiceServer:getIndexChangedSignal(player, { "tutorial" }):Connect(function(index, newValue)
+	DataService:getIndexChangedSignal(player, { "tutorial" }):Connect(function(index, newValue)
 		print("Tutorial changed at index", index, "changed to:", newValue)
 	end)
 	```
@@ -587,7 +592,7 @@ end
 	Retrieves a signal that fires when an item is inserted into an array at the specified path.
 
 	```lua
-	DataServiceServer:getArrayInsertedSignal(player, { "inventory" }):Connect(function(index, value)
+	DataService:getArrayInsertedSignal(player, { "inventory" }):Connect(function(index, value)
 		print("Item inserted at index", index, "with value:", value)
 	end)
 	```
@@ -606,7 +611,7 @@ end
 	Retrieves a signal that fires when an item is removed from an array at the specified path.
 
 	```lua
-	DataServiceServer:getArrayRemovedSignal(player, { "inventory" }):Connect(function(index, value)
+	DataService:getArrayRemovedSignal(player, { "inventory" }):Connect(function(index, value)
 		print("Item removed from index", index, "with value:", value)
 	end)
 	```
