@@ -154,6 +154,13 @@ local function storeCancel(player: Player)
 	}
 end
 
+function DataServiceServer.resetData(self: DataServiceServer, player: Player): ()
+	local index = DATA_PREFIX .. player.UserId
+	self:_playerRemoving(player)
+	self.playerStore:RemoveAsync(index)
+	player:Kick("Your data has been reset. Please rejoin.")
+end
+
 function DataServiceServer._playerAdded(self: DataServiceServer, player: Player): ()
 	local userId = self.options.overridenUserId or self.options.viewedUserId or player.UserId
 	local index = DATA_PREFIX .. userId
