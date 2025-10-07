@@ -14,8 +14,8 @@ export type Data<T> = typeof(setmetatable(
 		_data: T,
 		_autoClearThread: thread?,
 		_signals: {
-			changed: { [string]: Signal<any> },
-			indexChanged: { [string]: Signal<any> },
+			changed: { [string]: Signal.Signal<any, any?> },
+			indexChanged: { [string]: Signal.Signal<any, any?> },
 			arrayInserted: { [string]: Signal<any> },
 			arrayRemoved: { [string]: Signal<any> },
 		},
@@ -88,8 +88,9 @@ end
 function Data.set<T>(self: Data<T>, path: Path, value: any): ()
 	local data = self._data
 	if type(path) == "string" then
+		local prev = data[path]
 		data[path] = value
-		self:_firePathChangedSignals(path)
+		self:_firePathChangedSignals(path, prev)
 		return
 	end
 
@@ -97,8 +98,9 @@ function Data.set<T>(self: Data<T>, path: Path, value: any): ()
 		data = data[path[i]]
 	end
 
+	local prev = data[path[#path]]
 	data[path[#path]] = value
-	self:_firePathChangedSignals(path)
+	self:_firePathChangedSignals(path, prev)
 end
 
 function Data.update<T>(self: Data<T>, path: Path, callback: (any) -> any): any
@@ -156,9 +158,9 @@ function Data.getArrayRemovedSignal<T>(self: Data<T>, path: Path): Signal<any>
 	return self:_getSignal(path, "arrayRemoved")
 end
 
-function Data._firePathChangedSignals<T>(self: Data<T>, path: Path): string
+function Data._firePathChangedSignals<T>(self: Data<T>, path: Path, prev: any?): string
 	if type(path) == "string" then
-		self:_fireChangedSignal(path, self:get(path))
+		self:_fireChangedSignal(path, self:get(path), prev)
 		return path
 	end
 
@@ -170,7 +172,7 @@ function Data._firePathChangedSignals<T>(self: Data<T>, path: Path): string
 		value = value[key]
 
 		if i > 1 then
-			self:_fireIndexChangedSignal(pathString, key, value)
+			self:_fireIndexChangedSignal(pathString, key, value, prev)
 		end
 
 		if type(key) == "number" then
@@ -178,7 +180,7 @@ function Data._firePathChangedSignals<T>(self: Data<T>, path: Path): string
 		end
 		pathString ..= key
 
-		self:_fireChangedSignal(pathString, value)
+		self:_fireChangedSignal(pathString, value, prev)
 
 		if i < maxIndex then
 			pathString ..= "."
@@ -188,17 +190,23 @@ function Data._firePathChangedSignals<T>(self: Data<T>, path: Path): string
 	return pathString
 end
 
-function Data._fireChangedSignal<T>(self: Data<T>, pathString: string, value: any): ()
+function Data._fireChangedSignal<T>(self: Data<T>, pathString: string, value: any, prev: any?): ()
 	local signal = self._signals.changed[pathString]
 	if signal then
-		signal:Fire(value)
+		signal:Fire(value, prev)
 	end
 end
 
-function Data._fireIndexChangedSignal<T>(self: Data<T>, pathString: string, index: string | number, value: any): ()
+function Data._fireIndexChangedSignal<T>(
+	self: Data<T>,
+	pathString: string,
+	index: string | number,
+	value: any,
+	prev: any?
+): ()
 	local signal = self._signals.indexChanged[pathString]
 	if signal then
-		signal:Fire(index, value)
+		signal:Fire(index, value, prev)
 	end
 end
 
