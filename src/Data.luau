@@ -1,48 +1,63 @@
 local Packages = script.Parent.Parent
 local Signal = require(Packages.Signal)
 
-local AUTO_CLEAR_SIGNAL_TIMER = 30
 local Data = {}
 Data.__index = Data
 
 type PlayerData<T> = T & {}
 export type Path = string | { string }
 type Signal<T> = Signal.Signal<T>
+type WeakValueTable<T> = typeof(setmetatable({} :: { [string]: T }, { __mode = "v" }))
+type WeakKeyTable<T, V> = typeof(setmetatable({} :: { [T]: V }, { __mode = "k" }))
 
 export type Data<T> = typeof(setmetatable(
 	{} :: {
 		_data: T,
-		_autoClearThread: thread?,
-		_signals: {
+		_signalsStrong: {
 			changed: { [string]: Signal.Signal<any, any?> },
 			indexChanged: { [string]: Signal.Signal<any, any?> },
 			arrayInserted: { [string]: Signal<any> },
 			arrayRemoved: { [string]: Signal<any> },
 		},
+		_signals: {
+			changed: WeakValueTable<Signal.Signal<any, any?>>,
+			indexChanged: WeakValueTable<Signal.Signal<any, any?>>,
+			arrayInserted: WeakValueTable<Signal<any>>,
+			arrayRemoved: WeakValueTable<Signal<any>>,
+		},
+		_connCounts: {
+			changed: WeakKeyTable<Signal.Signal<any, any?>, number>,
+			indexChanged: WeakKeyTable<Signal.Signal<any, any?>, number>,
+			arrayInserted: WeakKeyTable<Signal<any>, number>,
+			arrayRemoved: WeakKeyTable<Signal<any>, number>,
+		},
 	},
 	Data
 ))
 
+local function newWeakValueTable()
+	return setmetatable({}, { __mode = "v" })
+end
+
 function Data.new<T>(data: T): Data<T>
 	local self = {
 		_data = data,
-		_autoClearThread = nil,
+		_signalsStrong = { changed = {}, indexChanged = {}, arrayInserted = {}, arrayRemoved = {} },
 		_signals = {
-			changed = {},
-			indexChanged = {},
-			arrayInserted = {},
-			arrayRemoved = {},
+			changed = newWeakValueTable(),
+			indexChanged = newWeakValueTable(),
+			arrayInserted = newWeakValueTable(),
+			arrayRemoved = newWeakValueTable(),
 		},
+		_connCounts = {
+			changed = setmetatable({}, { __mode = "k" }),
+			indexChanged = setmetatable({}, { __mode = "k" }),
+			arrayInserted = setmetatable({}, { __mode = "k" }),
+			arrayRemoved = setmetatable({}, { __mode = "k" }),
+		}
 	}
 
 	setmetatable(self, Data)
-
-	self._autoClearThread = task.spawn(function()
-		while true do
-			task.wait(AUTO_CLEAR_SIGNAL_TIMER)
-			self:_clearSignals()
-		end
-	end)
 
 	return self
 end
@@ -53,7 +68,7 @@ local function pathToString(path: Path): string
 	end
 
 	local pathString = ""
-	local maxIndex = #path - 1
+	local maxIndex = #path
 	for i, key in ipairs(path) do
 		if type(key) == "number" then
 			pathString ..= "#"
@@ -166,7 +181,7 @@ function Data._firePathChangedSignals<T>(self: Data<T>, path: Path, prev: any?):
 
 	local value = self._data
 	local pathString = ""
-	local maxIndex = #path - 1
+	local maxIndex = #path
 
 	for i, key in ipairs(path) do
 		value = value[key]
@@ -212,32 +227,59 @@ end
 
 function Data._getSignal<T>(self: Data<T>, path: Path, signalType: string): Signal<any>
 	local pathString = pathToString(path)
-	if not self._signals[signalType][pathString] then
-		self._signals[signalType][pathString] = Signal.new()
+	local signal = self._signals[signalType][pathString]
+	if not signal then
+		signal = Signal.new()
+		self._signals[signalType][pathString] = signal
 	end
 
-	return self._signals[signalType][pathString]
-end
+	if signal.__wrapped then
+		return signal
+	end
 
-function Data._clearSignals<T>(self: Data<T>): ()
-	for _, signals in self._signals do
-		for i, signal: Signal<any> in signals do
-			if #signal:GetConnections() > 0 then
-				continue
+	local originalConnect = signal.Connect
+	local counts = self._connCounts[signalType]
+	local strongSignals = self._signalsStrong[signalType]
+	signal.Connect = function(_, handler: (any, any?) -> ()): Signal.Connection
+		local conn = originalConnect(signal, handler)
+		local count = counts[pathString] or 0
+		counts[signal] = count + 1
+		strongSignals[pathString] = signal
+
+		local originalDisconnect = conn.Disconnect
+		conn.Disconnect = function()
+			local n = counts[signal] or 1
+			if not n then 
+				originalDisconnect(conn)
+				return
 			end
 
-			signal:Destroy()
-			signals[i] = nil
+			if n <= 1 then
+				counts[signal] = nil
+				strongSignals[pathString] = nil
+			else
+				counts[signal] = n - 1
+			end
+
+			originalDisconnect(conn)
 		end
+
+		conn.Destroy = conn.Disconnect
+		return conn
 	end
+
+	local originalDestroy = signal.Destroy
+	signal.Destroy = function()
+		counts[signal] = nil
+		strongSignals[pathString] = nil
+		originalDestroy(signal)
+	end
+
+	signal.__wrapped = true
+	return signal
 end
 
 function Data.destroy<T>(self: Data<T>): ()
-	if self._autoClearThread then
-		task.cancel(self._autoClearThread)
-		self._autoClearThread = nil
-	end
-
 	for _, signals in self._signals do
 		for _, signal in signals do
 			signal:Destroy()
