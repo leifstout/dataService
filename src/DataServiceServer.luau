@@ -14,6 +14,7 @@ local Data = require(script.Parent.Data)
 local DataServiceUtils = require(script.Parent.DataServiceUtils)
 
 local DATA_PREFIX = "PLAYER_"
+local DEFAULT_PROFILE_STORE_INDEX = "Default"
 
 type Path = Data.Path
 type Signal<T> = Signal.Signal<T>
@@ -79,12 +80,13 @@ type DataTemplate = { [string]: any }
 ]=]
 type DataOptions = {
 	template: any,
-	profileStoreIndex: string,
 	useMock: boolean?,
 	viewedUserId: number?,
 	overridenUserId: number?,
 	dontSave: boolean?,
 	resetData: boolean?,
+	profileStoreIndex: string?,
+	profileStoreDataPrefix: string?,
 }
 
 type Profile = ProfileStore.Profile<any>
@@ -126,10 +128,8 @@ function DataServiceServer.init(self: DataServiceServer, options: DataOptions): 
 	assert(RunService:IsServer(), "DataServiceServer can only be used on the server.")
 	assert(not self.playerStore, "DataServiceServer has already been initialized.")
 	self.options = options
-	self.playerStore = ProfileStore.New(options.profileStoreIndex, options.template)
-	self.networker = Networker.server.new("DataService", self, {
-		self.get,
-	})
+	self.playerStore = ProfileStore.New(options.profileStoreIndex or DEFAULT_PROFILE_STORE_INDEX, options.template)
+	self.networker = Networker.server.new("DataService", self, { self.get })
 
 	for _, player: Player in Players:GetPlayers() do
 		task.spawn(function()
@@ -155,7 +155,7 @@ local function storeCancel(player: Player)
 end
 
 function DataServiceServer.resetData(self: DataServiceServer, player: Player): ()
-	local index = DATA_PREFIX .. player.UserId
+	local index = self:_getProfileKey(player.UserId)
 	self:_playerRemoving(player)
 	self.playerStore:RemoveAsync(index)
 	player:Kick("Your data has been reset. Please rejoin.")
@@ -163,7 +163,7 @@ end
 
 function DataServiceServer._playerAdded(self: DataServiceServer, player: Player): ()
 	local userId = self.options.overridenUserId or self.options.viewedUserId or player.UserId
-	local index = DATA_PREFIX .. userId
+	local index = self:_getProfileKey(userId)
 
 	if self.options.resetData and not self.options.viewedUserId then
 		self.playerStore:RemoveAsync(index)
@@ -221,18 +221,18 @@ function DataServiceServer._playerAdded(self: DataServiceServer, player: Player)
 	end)
 end
 
+function DataServiceServer._getProfileKey(self: DataServiceServer, userId: number | string): string
+	return (self.options.profileStoreDataPrefix or DATA_PREFIX) .. tostring(userId)
+end
+
 function DataServiceServer.sendGlobalMessage(
 	self: DataServiceServer,
 	key: string,
 	userId: number | string,
 	data: { any }
 ): boolean
-	local profileKey = DATA_PREFIX .. tostring(userId)
-	local messageData: MessageData = {
-		key = key,
-		data = data,
-	}
-	return self.playerStore:MessageAsync(profileKey, messageData)
+	local messageData: MessageData = { key = key, data = data }
+	return self.playerStore:MessageAsync(self:_getProfileKey(userId), messageData)
 end
 
 function DataServiceServer.addGlobalCallback(
