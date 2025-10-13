@@ -169,13 +169,13 @@ function Data._firePathChangedSignals<T>(self: Data<T>, path: Path, prev: any?):
 
 	local value = self._data
 	local pathString = ""
-	local maxIndex = #path
 
 	for i, key in ipairs(path) do
 		value = value[key]
 
 		if i > 1 then
 			self:_fireIndexChangedSignal(pathString, key, value, prev)
+			pathString ..= "."
 		end
 
 		if type(key) == "number" then
@@ -184,10 +184,6 @@ function Data._firePathChangedSignals<T>(self: Data<T>, path: Path, prev: any?):
 		pathString ..= key
 
 		self:_fireChangedSignal(pathString, value, prev)
-
-		if i < maxIndex then
-			pathString ..= "."
-		end
 	end
 
 	return pathString
