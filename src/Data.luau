@@ -8,53 +8,41 @@ type PlayerData<T> = T & {}
 export type Path = string | { string }
 type Signal<T> = Signal.Signal<T>
 type WeakValueTable<T> = typeof(setmetatable({} :: { [string]: T }, { __mode = "v" }))
-type WeakKeyTable<T, V> = typeof(setmetatable({} :: { [T]: V }, { __mode = "k" }))
 
 export type Data<T> = typeof(setmetatable(
 	{} :: {
 		_data: T,
-		_signalsStrong: {
+		_signals: {
 			changed: { [string]: Signal.Signal<any, any?> },
 			indexChanged: { [string]: Signal.Signal<any, any?> },
 			arrayInserted: { [string]: Signal<any> },
 			arrayRemoved: { [string]: Signal<any> },
 		},
-		_signals: {
+		_weakSignals: {
 			changed: WeakValueTable<Signal.Signal<any, any?>>,
 			indexChanged: WeakValueTable<Signal.Signal<any, any?>>,
 			arrayInserted: WeakValueTable<Signal<any>>,
 			arrayRemoved: WeakValueTable<Signal<any>>,
 		},
-		_connCounts: {
-			changed: WeakKeyTable<Signal.Signal<any, any?>, number>,
-			indexChanged: WeakKeyTable<Signal.Signal<any, any?>, number>,
-			arrayInserted: WeakKeyTable<Signal<any>, number>,
-			arrayRemoved: WeakKeyTable<Signal<any>, number>,
-		},
 	},
 	Data
 ))
 
-local function newWeakValueTable()
-	return setmetatable({}, { __mode = "v" })
-end
-
 function Data.new<T>(data: T): Data<T>
 	local self = {
 		_data = data,
-		_signalsStrong = { changed = {}, indexChanged = {}, arrayInserted = {}, arrayRemoved = {} },
 		_signals = {
-			changed = newWeakValueTable(),
-			indexChanged = newWeakValueTable(),
-			arrayInserted = newWeakValueTable(),
-			arrayRemoved = newWeakValueTable(),
+			changed = {},
+			indexChanged = {},
+			arrayInserted = {},
+			arrayRemoved = {},
 		},
-		_connCounts = {
-			changed = setmetatable({}, { __mode = "k" }),
-			indexChanged = setmetatable({}, { __mode = "k" }),
-			arrayInserted = setmetatable({}, { __mode = "k" }),
-			arrayRemoved = setmetatable({}, { __mode = "k" }),
-		}
+		_weakSignals = {
+			changed = setmetatable({}, { __mode = "v" }),
+			indexChanged = setmetatable({}, { __mode = "v" }),
+			arrayInserted = setmetatable({}, { __mode = "v" }),
+			arrayRemoved = setmetatable({}, { __mode = "v" }),
+		},
 	}
 
 	setmetatable(self, Data)
@@ -227,55 +215,55 @@ end
 
 function Data._getSignal<T>(self: Data<T>, path: Path, signalType: string): Signal<any>
 	local pathString = pathToString(path)
-	local signal = self._signals[signalType][pathString]
-	if not signal then
-		signal = Signal.new()
-		self._signals[signalType][pathString] = signal
-	end
-
-	if signal.__wrapped then
+	local weakSignals = self._weakSignals[signalType]
+	local signal = weakSignals[pathString]
+	if signal then
 		return signal
 	end
 
-	local originalConnect = signal.Connect
-	local counts = self._connCounts[signalType]
-	local strongSignals = self._signalsStrong[signalType]
-	signal.Connect = function(_, handler: (any, any?) -> ()): Signal.Connection
-		local conn = originalConnect(signal, handler)
-		local count = counts[pathString] or 0
-		counts[signal] = count + 1
-		strongSignals[pathString] = signal
+	signal = Signal.new()
+	weakSignals[pathString] = signal
+	local connCreators = { Connect = signal.Connect, Once = signal.Once }
+	local connCount = 0
+	local strongSignals = self._signals[signalType]
 
-		local originalDisconnect = conn.Disconnect
-		conn.Disconnect = function()
-			local n = counts[signal] or 1
-			if not n then 
+	for funcName, originalFunc in connCreators do
+		signal[funcName] = function(_, handler: (...any?) -> ())
+			local conn = originalFunc(signal, handler)
+			connCount += 1
+			strongSignals[pathString] = signal
+
+			local originalDisconnect = conn.Disconnect
+			conn.Disconnect = function()
+				if conn.Connected then
+					connCount -= 1
+					if connCount <= 0 then
+						strongSignals[pathString] = nil
+					end
+				end
 				originalDisconnect(conn)
-				return
 			end
 
-			if n <= 1 then
-				counts[signal] = nil
-				strongSignals[pathString] = nil
-			else
-				counts[signal] = n - 1
-			end
-
-			originalDisconnect(conn)
+			conn.Destroy = conn.Disconnect
+			return conn
 		end
-
-		conn.Destroy = conn.Disconnect
-		return conn
 	end
 
 	local originalDestroy = signal.Destroy
 	signal.Destroy = function()
-		counts[signal] = nil
+		connCount = 0
 		strongSignals[pathString] = nil
+		weakSignals[pathString] = nil
 		originalDestroy(signal)
 	end
 
-	signal.__wrapped = true
+	local originalDisconnectAll = signal.DisconnectAll
+	signal.DisconnectAll = function()
+		connCount = 0
+		strongSignals[pathString] = nil
+		originalDisconnectAll(signal)
+	end
+
 	return signal
 end
 
