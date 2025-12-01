@@ -154,6 +154,19 @@ local function storeCancel(player: Player)
 	}
 end
 
+--[=[
+	@method resetData
+	@within DataServiceServer
+	@param player Player
+
+	Resets the data for the specified player by removing their profile from the store.
+	The player is then kicked from the game with a message to rejoin.
+
+	```lua
+	local DataService = require(path.to.DataService).server
+	DataService:resetData(player)
+	```
+]=]
 function DataServiceServer.resetData(self: DataServiceServer, player: Player): ()
 	local index = self:_getProfileKey(player.UserId)
 	self:_playerRemoving(player)
@@ -225,6 +238,22 @@ function DataServiceServer._getProfileKey(self: DataServiceServer, userId: numbe
 	return (self.options.profileStoreDataPrefix or DATA_PREFIX) .. tostring(userId)
 end
 
+--[=[
+	@method sendGlobalMessage
+	@within DataServiceServer
+	@param key string
+	@param userId number | string
+	@param data { any }
+	@return boolean
+
+	Sends a global message to the specified user's profile.
+	Returns true if the message was sent successfully, false otherwise.
+
+	```lua
+	local DataService = require(path.to.DataService).server
+	DataService:sendGlobalMessage("SendGift", userId, { currency = 100, from = "Friend" })
+	```
+]=]
 function DataServiceServer.sendGlobalMessage(
 	self: DataServiceServer,
 	key: string,
@@ -235,6 +264,24 @@ function DataServiceServer.sendGlobalMessage(
 	return self.playerStore:MessageAsync(self:_getProfileKey(userId), messageData)
 end
 
+--[=[
+	@method addGlobalCallback
+	@within DataServiceServer
+	@param key string
+	@param cb (player: Player, data: { any }) -> boolean?
+
+	Adds a global callback function for handling messages with the specified key.
+	The callback receives the player and data as parameters.
+	If the callback returns false, the message is not processed further.
+
+	```lua
+	local DataService = require(path.to.DataService).server
+	DataService:addGlobalCallback("SendGift", function(player: Player, data: { any }): boolean?
+		print("Received gift for", player.Name, "with data:", data)
+		-- Process the gift here
+	end)
+	```
+]=]
 function DataServiceServer.addGlobalCallback(
 	self: DataServiceServer,
 	key: string,
@@ -334,6 +381,19 @@ function DataServiceServer.addPlayerRemovingCallback(
 			table.remove(self._removalFunctions, index)
 		end
 	end
+end
+
+--[=[
+	@method asyncGetProfile
+	@within DataServiceServer
+	@param userId number | string
+	@return Profile?
+
+	Asynchronously retrieves the profile for the given user ID using internal ProfileStore.
+]=]
+function DataServiceServer.asyncGetProfile(self: DataServiceServer, userId: number | string): Profile?
+	local profileKey = DATA_PREFIX .. tostring(userId)
+	return self.playerStore:GetAsync(profileKey)
 end
 
 function DataServiceServer._initPlayer(self: DataServiceServer, player: Player, data: any): ()
