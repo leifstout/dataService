@@ -12,7 +12,7 @@ Add DataService to your `wally.toml`:
 
 ```toml
 [dependencies]
-DataService = "leifstout/dataService@^1.0.0"
+DataService = "leifstout/dataservice@1.0.0"
 ```
 
 Then run:
@@ -46,31 +46,28 @@ In a server script, initialize DataService once:
 
 ```lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Packages = ReplicatedStorage.Packages
-
 local DataService = require(Packages.DataService).server
-local dataTemplate = require(script.Parent.dataTemplate)
+local DataTemplate = require(Path.To.DataTemplate)
 
 DataService:init({
-	template = dataTemplate,
-	profileStoreIndex = "Default",
+	template = DataTemplate,
 })
 ```
 
-## 4) Read and react on the client
+## 4) Init, read, and react on the client
 
 Use the client module to read data and subscribe to changes:
 
 ```lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Packages = ReplicatedStorage.Packages
-
 local DataService = require(Packages.DataService).client
 
-local currency = DataService:get({ "currency" })
+DataService:init()
+
+local currency = DataService:get("currency")
 print("Currency:", currency)
 
-DataService:getChangedSignal({ "currency" }):Connect(function(newValue)
+DataService:getChangedSignal("currency"):Connect(function(newValue)
 	print("Currency updated:", newValue)
 end)
 ```
@@ -81,7 +78,7 @@ When game logic changes player values, mutate data on the server:
 
 ```lua
 -- Example: add currency when a player completes a reward
-DataService:update(player, { "currency" }, function(current)
+DataService:update(player, "currency", function(current)
 	return current + 100
 end)
 ```
@@ -89,4 +86,3 @@ end)
 ## Next steps
 
 - Browse the **complete API reference**: https://leifstout.github.io/dataService/api
-- Review options like `useMock`, `dontSave`, and `resetData` in the server API.
